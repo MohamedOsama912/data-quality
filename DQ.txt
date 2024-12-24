@@ -1,0 +1,298 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+def upload_file_section():
+    """Section for uploading a file."""
+    st.header("Upload File")
+    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                st.session_state.df = pd.read_csv(uploaded_file)
+            else:
+                st.session_state.df = pd.read_excel(uploaded_file)
+            st.success("File loaded successfully!")
+            st.dataframe(st.session_state.df)
+        except Exception as e:
+            st.error(f"Error occurred while loading the file: {e}")
+    else:
+        st.info("Please upload a file to proceed.")
+
+def info_section():
+    """Section for dataset information."""
+    st.header("Info")
+    if st.session_state.df is not None:
+        st.write("### Dataset Information")
+        if st.checkbox("Show Data"):
+            st.write(st.session_state.df)
+        if st.checkbox("Show Columns"):
+            st.write(st.session_state.df.columns.tolist())
+        if st.checkbox("Show Dimensions"):
+            st.write(f"Rows: {st.session_state.df.shape[0]}, Columns: {st.session_state.df.shape[1]}")
+    else:
+        st.warning("Please upload a dataset first!")
+
+def describe_section():
+    """Section for dataset description."""
+    st.header("Describe Dataset")
+    if st.session_state.df is not None:
+        st.write("### Dataset Description")
+        st.write(st.session_state.df.describe())
+    else:
+        st.warning("Please upload a dataset first!")
+
+def correlation_analysis_section():
+    """Section for correlation analysis."""
+    st.header("Correlation Analysis")
+    if st.session_state.df is not None:
+        numeric_df = st.session_state.df.select_dtypes(include=[np.number])
+        if not numeric_df.empty:
+            st.write("### Correlation Matrix")
+            correlation = numeric_df.corr()
+            st.write(correlation)
+
+            st.write("### Heatmap")
+            fig, ax = plt.subplots()
+            sns.heatmap(correlation, annot=True, cmap='coolwarm', ax=ax)
+            st.pyplot(fig)
+        else:
+            st.warning("No numeric columns available for correlation analysis.")
+    else:
+        st.warning("Please upload a dataset first!")
+
+def attributes_visualization_section():
+    """Section for visualizing attributes."""
+    st.header("Attributes Visualization")
+    if st.session_state.df is not None:
+        df = st.session_state.df
+        column = st.selectbox("Select a column to visualize", df.columns)
+        if column:
+            if pd.api.types.is_numeric_dtype(df[column]):
+                st.write(f"### Distribution of {column}")
+                fig, ax = plt.subplots()
+                sns.histplot(df[column], kde=True, ax=ax)
+                st.pyplot(fig)
+            else:
+                st.write(f"### Value Counts of {column}")
+                fig, ax = plt.subplots()
+                df[column].value_counts().plot(kind='bar', ax=ax)
+                st.pyplot(fig)
+    else:
+        st.warning("Please upload a dataset first!")
+
+def handle_missing_values_section():
+    """Section for handling missing values."""
+    st.header("Handle Missing Values")
+    if st.session_state.df is not None:
+        df = st.session_state.df.copy()
+
+        if st.checkbox("Show Missing Values"):
+            st.write(df.isnull().sum())
+
+        if st.checkbox("Handle Missing Values"):
+            col_to_handle = st.selectbox("Select a column to handle missing values", df.columns)
+            handle_option = st.selectbox(
+                "Select a method to handle missing values",
+                ("Select Method", "Mode", "Mean", "Median", "Remove Rows", "Fill with Zero")
+            )
+
+            if handle_option and handle_option != "Select Method":
+                st.write("### Before Handling Missing Values")
+                st.write(df[col_to_handle])
+
+                # Apply changes based on the selected option
+                if handle_option == "Mode":
+                    mode_value = df[col_to_handle].mode()[0]
+                    preview_df = df.copy()
+                    preview_df[col_to_handle].fillna(mode_value, inplace=True)
+                elif handle_option == "Mean":
+                    mean_value = df[col_to_handle].mean()
+                    preview_df = df.copy()
+                    preview_df[col_to_handle].fillna(mean_value, inplace=True)
+                elif handle_option == "Median":
+                    median_value = df[col_to_handle].median()
+                    preview_df = df.copy()
+                    preview_df[col_to_handle].fillna(median_value, inplace=True)
+                elif handle_option == "Remove Rows":
+                    preview_df = df.dropna(subset=[col_to_handle])
+                elif handle_option == "Fill with Zero":
+                    preview_df = df.copy()
+                    preview_df[col_to_handle].fillna(0, inplace=True)
+
+                st.write("### After Previewing Handling Missing Values")
+                st.write(preview_df[col_to_handle])
+
+                if st.button("Apply Changes"):
+                    st.session_state.df = preview_df
+                    st.success("Changes applied successfully!")
+                    st.dataframe(st.session_state.df)
+    else:
+        st.warning("Please upload a dataset first!")
+
+def handle_duplicates_section():
+    """Section for handling duplicate rows."""
+    st.header("Handle Duplicates")
+    if st.session_state.df is not None:
+        df = st.session_state.df.copy()
+        st.write(f"Number of duplicate rows: {df.duplicated().sum()}")
+
+        if st.checkbox("Remove Duplicates"):
+            st.write("### Before Removing Duplicates")
+            st.write(df)
+
+            preview_df = df.drop_duplicates()
+            st.write("### After Previewing Removing Duplicates")
+            st.write(preview_df)
+
+            if st.button("Apply"):
+                st.session_state.df = preview_df
+                st.success("Duplicates removed successfully!")
+    else:
+        st.warning("Please upload a dataset first!")
+
+def handle_outliers_section():
+    """Section for handling outliers."""
+    st.header("Handle Outliers")
+    if st.session_state.df is not None:
+        df = st.session_state.df.copy()
+
+        # تحديد الأعمدة الرقمية فقط
+        numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+        if numeric_columns:
+            col_to_handle = st.selectbox("Select a column to handle outliers", numeric_columns)
+            if col_to_handle:
+                # حساب الـ IQR (Interquartile Range)
+                q1 = df[col_to_handle].quantile(0.25)
+                q3 = df[col_to_handle].quantile(0.75)
+                iqr = q3 - q1
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+
+                # العثور على القيم المتطرفة
+                outliers = ((df[col_to_handle] < lower_bound) | (df[col_to_handle] > upper_bound))
+                st.write(f"### Outliers in '{col_to_handle}' column:")
+                st.write(df[outliers])
+
+                # عرض القيم المتطرفة قبل معالجة البيانات
+                st.write("### Before Handling Outliers")
+                st.write(df.loc[outliers, col_to_handle])
+
+                method = st.selectbox("Select a method to handle outliers", ["", "Mode", "Mean", "Median", "Remove", "Clip"])
+                if method:
+                    preview_df = df.copy()
+
+                    if method == "Mode":
+                        replacement_value = preview_df[col_to_handle].mode()[0]
+                        preview_df.loc[outliers, col_to_handle] = replacement_value
+                    elif method == "Mean":
+                        replacement_value = preview_df[col_to_handle].mean()
+                        preview_df.loc[outliers, col_to_handle] = replacement_value
+                    elif method == "Median":
+                        replacement_value = preview_df[col_to_handle].median()
+                        preview_df.loc[outliers, col_to_handle] = replacement_value
+                    elif method == "Remove":
+                        preview_df = preview_df.loc[~outliers]
+                    elif method == "Clip":
+                        preview_df.loc[outliers, col_to_handle] = np.clip(preview_df[col_to_handle], lower_bound, upper_bound)
+
+                    st.write("### After Previewing Handling Outliers")
+                    st.write(preview_df.loc[outliers, col_to_handle])
+
+                    if st.button("Apply Changes"):
+                        st.session_state.df = preview_df
+                        st.success(f"Outliers in '{col_to_handle}' handled successfully!")
+        else:
+            st.warning("No numeric columns available to handle outliers.")
+    else:
+        st.warning("Please upload a dataset first!")
+
+def handle_data_types_section():
+    """Section for handling data types."""
+    st.header("Handle Data Types")
+    if st.session_state.df is not None:
+        df = st.session_state.df.copy()
+        col_to_convert = st.selectbox("Select a column to convert data type", df.columns)
+        if col_to_convert:
+            dtype = st.selectbox("Select a target data type", ["", "int", "float", "str", "datetime"])
+
+            if dtype:
+                st.write("### Before Conversion")
+                st.write(df[col_to_convert].head())
+
+                preview_df = df.copy()
+                try:
+                    if dtype == "datetime":
+                        preview_df[col_to_convert] = pd.to_datetime(preview_df[col_to_convert], errors='coerce')
+                    elif dtype == "int":
+                        preview_df[col_to_convert] = pd.to_numeric(preview_df[col_to_convert], errors='coerce').astype('Int64')
+                    elif dtype == "float":
+                        preview_df[col_to_convert] = pd.to_numeric(preview_df[col_to_convert], errors='coerce')
+                    elif dtype == "str":
+                        preview_df[col_to_convert] = preview_df[col_to_convert].astype(str)
+
+                    st.write("### After Previewing Conversion")
+                    st.write(preview_df[col_to_convert].head())
+
+                    if st.button("Apply"):
+                        st.session_state.df = preview_df
+                        st.success(f"Column '{col_to_convert}' converted to {dtype}.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+    else:
+        st.warning("Please upload a dataset first!")
+
+def download_dataset_section():
+    """Section for downloading the dataset."""
+    st.header("Download Dataset")
+    if st.session_state.df is not None:
+        df = st.session_state.df
+        st.download_button(
+            label="Download Cleaned Dataset",
+            data=df.to_csv(index=False).encode('utf-8'),
+            file_name='cleaned_dataset.csv',
+            mime='text/csv'
+        )
+    else:
+        st.warning("Please upload a dataset first!")
+
+def navigation():
+    """Main navigation function."""
+    st.title("Data Dive 🌊")
+
+    if "df" not in st.session_state:
+        st.session_state.df = None
+
+    options = [
+        "Upload File", "Info", "Describe", "Correlation Analysis", 
+        "Attributes Visualization", "Handle Missing Values", 
+        "Handle Duplicates", "Handle Outliers", "Handle Data Types", "Download Dataset"
+    ]
+    selected_option = st.sidebar.radio("Navigate to:", options)
+
+    if selected_option == "Upload File":
+        upload_file_section()
+    elif selected_option == "Info":
+        info_section()
+    elif selected_option == "Describe":
+        describe_section()
+    elif selected_option == "Correlation Analysis":
+        correlation_analysis_section()
+    elif selected_option == "Attributes Visualization":
+        attributes_visualization_section()
+    elif selected_option == "Handle Missing Values":
+        handle_missing_values_section()
+    elif selected_option == "Handle Duplicates":
+        handle_duplicates_section()
+    elif selected_option == "Handle Outliers":
+        handle_outliers_section()
+    elif selected_option == "Handle Data Types":
+        handle_data_types_section()
+    elif selected_option == "Download Dataset":
+        download_dataset_section()
+
+# Run the app
+navigation()
